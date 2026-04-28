@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/danielporterda/mintlify-fast-preview/internal/config"
 	"github.com/danielporterda/mintlify-fast-preview/internal/mdx"
@@ -76,6 +77,9 @@ func Serve(root, host string, port int, noOpen bool) error {
 		return err
 	}
 	addr := fmt.Sprintf("%s:%d", host, port)
+	stop := make(chan struct{})
+	defer close(stop)
+	go watchForReloads(root, handler.reload, 250*time.Millisecond, stop)
 	return http.ListenAndServe(addr, handler)
 }
 
@@ -92,6 +96,7 @@ type Handler struct {
 	docs        *config.Docs
 	routes      map[string]site.Route
 	searchIndex *search.Index
+	reload      *reloadHub
 }
 
 func NewHandler(root string) (*Handler, error) {
@@ -108,7 +113,7 @@ func NewHandler(root string) (*Handler, error) {
 		byRoute[route.URL] = route
 	}
 	index := buildSearchIndex(root, docs, routes)
-	return &Handler{root: root, docs: docs, routes: byRoute, searchIndex: index}, nil
+	return &Handler{root: root, docs: docs, routes: byRoute, searchIndex: index, reload: newReloadHub()}, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +126,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/_mintfast/events" {
-		h.serveEvents(w)
+		h.serveEvents(w, r)
 		return
 	}
 	routePath := config.CleanRoute(r.URL.Path)
@@ -144,10 +149,27 @@ func (h *Handler) serveSearch(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(results)
 }
 
-func (h *Handler) serveEvents(w http.ResponseWriter) {
+func (h *Handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("content-type", "text/event-stream")
 	w.Header().Set("cache-control", "no-cache")
+	flusher, _ := w.(http.Flusher)
 	_, _ = io.WriteString(w, "event: ready\ndata: {}\n\n")
+	if flusher != nil {
+		flusher.Flush()
+	}
+	events := h.reload.subscribe()
+	defer h.reload.unsubscribe(events)
+	for {
+		select {
+		case <-events:
+			_, _ = io.WriteString(w, "event: reload\ndata: {}\n\n")
+			if flusher != nil {
+				flusher.Flush()
+			}
+		case <-r.Context().Done():
+			return
+		}
+	}
 }
 
 func navHTML(docs *config.Docs) string {
