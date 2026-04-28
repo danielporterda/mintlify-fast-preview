@@ -1,0 +1,51 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Canton Network Docs",
+  "colors": {
+    "primary": "#734BE2",
+    "light": "#A985FF",
+    "dark": "#5C3DB8"
+  },
+  "navigation": {
+    "dropdowns": [
+      {
+        "dropdown": "Overview",
+        "groups": [
+          {
+            "group": "Welcome",
+            "pages": ["index"]
+          },
+          {
+            "group": "Shared",
+            "pages": ["shared/version-compatibility-dashboard"]
+          }
+        ]
+      },
+      {
+        "dropdown": "API Reference",
+        "versions": [
+          {
+            "version": "MainNet",
+            "groups": [
+              {
+                "group": "Reference",
+                "pages": [
+                  "api-reference",
+                  "reference/protobuf/operations/com-digitalasset-canton-admin-mediator-v30/mediatorstatusservice/mediatorstatus",
+                  "reference/wallet-gateway-json-rpc/operations/dapp-api/connect",
+                  "reference/json-api-asyncapi-reference/operations/v2-commands-completions/subscribe"
+                ]
+              },
+              {
+                "group": "Troubleshooting",
+                "pages": ["global-synchronizer/troubleshooting-guide/common-questions"]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+
