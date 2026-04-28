@@ -31,28 +31,34 @@ type Logo struct {
 }
 
 type Navigation struct {
-	Dropdowns []Dropdown `json:"dropdowns"`
-	Groups    []Group    `json:"groups"`
-	Pages     []string   `json:"pages"`
+	Dropdowns []Dropdown  `json:"dropdowns"`
+	Groups    []Group     `json:"groups"`
+	Pages     []PageEntry `json:"pages"`
 }
 
 type Dropdown struct {
-	Dropdown string    `json:"dropdown"`
-	Icon     string    `json:"icon"`
-	Versions []Version `json:"versions"`
-	Groups   []Group   `json:"groups"`
-	Pages    []string  `json:"pages"`
+	Dropdown string      `json:"dropdown"`
+	Icon     string      `json:"icon"`
+	Versions []Version   `json:"versions"`
+	Groups   []Group     `json:"groups"`
+	Pages    []PageEntry `json:"pages"`
 }
 
 type Version struct {
-	Version string   `json:"version"`
-	Groups  []Group  `json:"groups"`
-	Pages   []string `json:"pages"`
+	Version string      `json:"version"`
+	Groups  []Group     `json:"groups"`
+	Pages   []PageEntry `json:"pages"`
 }
 
 type Group struct {
-	Group string   `json:"group"`
-	Pages []string `json:"pages"`
+	Group string      `json:"group"`
+	Pages []PageEntry `json:"pages"`
+}
+
+type PageEntry struct {
+	Path  string
+	Group string
+	Pages []PageEntry
 }
 
 type Page struct {
@@ -77,20 +83,26 @@ func Load(root string) (*Docs, error) {
 
 func (d Docs) FlattenPages() []Page {
 	var pages []Page
-	addPages := func(dropdown, version, group string, refs []string) {
+	var addPages func(dropdown, version, group string, refs []PageEntry)
+	addPages = func(dropdown, version, group string, refs []PageEntry) {
 		for _, ref := range refs {
+			if ref.Group != "" {
+				addPages(dropdown, version, ref.Group, ref.Pages)
+				continue
+			}
+			if ref.Path == "" {
+				continue
+			}
 			pages = append(pages, Page{
-				Path:     strings.TrimPrefix(ref, "/"),
-				Route:    CleanRoute(ref),
+				Path:     strings.TrimPrefix(ref.Path, "/"),
+				Route:    CleanRoute(ref.Path),
 				Dropdown: dropdown,
 				Version:  version,
 				Group:    group,
 			})
 		}
 	}
-	for _, ref := range d.Navigation.Pages {
-		addPages("", "", "", []string{ref})
-	}
+	addPages("", "", "", d.Navigation.Pages)
 	for _, group := range d.Navigation.Groups {
 		addPages("", "", group.Group, group.Pages)
 	}
@@ -120,4 +132,33 @@ func CleanRoute(ref string) string {
 		return strings.TrimSuffix(clean, "/index")
 	}
 	return clean
+}
+
+func (p *PageEntry) UnmarshalJSON(data []byte) error {
+	var pathRef string
+	if err := json.Unmarshal(data, &pathRef); err == nil {
+		p.Path = pathRef
+		return nil
+	}
+	var object struct {
+		Group string      `json:"group"`
+		Pages []PageEntry `json:"pages"`
+		Page  string      `json:"page"`
+		Path  string      `json:"path"`
+		Href  string      `json:"href"`
+	}
+	if err := json.Unmarshal(data, &object); err != nil {
+		return err
+	}
+	p.Group = object.Group
+	p.Pages = object.Pages
+	switch {
+	case object.Page != "":
+		p.Path = object.Page
+	case object.Path != "":
+		p.Path = object.Path
+	case object.Href != "" && !strings.HasPrefix(object.Href, "http://") && !strings.HasPrefix(object.Href, "https://") && !strings.HasPrefix(object.Href, "mailto:"):
+		p.Path = object.Href
+	}
+	return nil
 }

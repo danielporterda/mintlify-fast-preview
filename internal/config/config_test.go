@@ -54,3 +54,32 @@ func TestLoadAndFlattenPages(t *testing.T) {
 		t.Fatalf("route = %q", pages[0].Route)
 	}
 }
+
+func TestFlattenNestedPageGroups(t *testing.T) {
+	root := t.TempDir()
+	err := os.WriteFile(filepath.Join(root, "docs.json"), []byte(`{
+	  "navigation": {
+	    "groups": [{
+	      "group": "Guides",
+	      "pages": [
+	        "guides/start",
+	        {"group":"Nested","pages":["guides/deep"]}
+	      ]
+	    }]
+	  }
+	}`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := docs.FlattenPages()
+	if len(pages) != 2 {
+		t.Fatalf("len(pages) = %d, want 2", len(pages))
+	}
+	if pages[0].Group != "Guides" || pages[1].Group != "Nested" {
+		t.Fatalf("unexpected groups: %+v", pages)
+	}
+}

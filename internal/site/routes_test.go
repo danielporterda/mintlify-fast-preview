@@ -27,7 +27,7 @@ func TestResolvePageExtensionless(t *testing.T) {
 }
 
 func TestBuildRoutesFailsForMissingPage(t *testing.T) {
-	docs := &config.Docs{Navigation: config.Navigation{Pages: []string{"missing"}}}
+	docs := &config.Docs{Navigation: config.Navigation{Pages: []config.PageEntry{{Path: "missing"}}}}
 	if _, err := BuildRoutes(t.TempDir(), docs); err == nil {
 		t.Fatal("expected missing page error")
 	}

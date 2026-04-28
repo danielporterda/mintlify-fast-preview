@@ -17,6 +17,7 @@
             version = "0.0.0";
             src = self;
             vendorHash = null;
+            subPackages = [ "cmd/mintfast" ];
           };
         });
 
@@ -36,4 +37,3 @@
         });
     };
 }
-
