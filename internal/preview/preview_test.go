@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/danielporterda/mintlify-fast-preview/internal/config"
 )
 
 func TestHandlerServesRenderedRoute(t *testing.T) {
@@ -28,6 +30,29 @@ func TestHandlerServesRenderedRoute(t *testing.T) {
 	}
 	if !strings.Contains(body, `class="nav-tree"`) {
 		t.Fatalf("missing nav shell: %s", body)
+	}
+}
+
+func TestNavHTMLRendersNestedGroups(t *testing.T) {
+	got := navHTML(&config.Docs{
+		Navigation: config.Navigation{
+			Groups: []config.Group{{
+				Group: "Guides",
+				Pages: []config.PageEntry{
+					{Path: "guides/start"},
+					{Group: "Nested", Pages: []config.PageEntry{{Path: "guides/deep"}}},
+				},
+			}},
+		},
+	})
+	for _, want := range []string{
+		`<a href="/guides/start">Start</a>`,
+		`<h5>Nested</h5>`,
+		`<a href="/guides/deep">Deep</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
 	}
 }
 

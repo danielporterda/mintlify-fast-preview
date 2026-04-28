@@ -176,6 +176,16 @@ func (h *Handler) serveEvents(w http.ResponseWriter, r *http.Request) {
 func navHTML(docs *config.Docs) string {
 	var b strings.Builder
 	b.WriteString(`<div class="nav-tree">`)
+	if len(docs.Navigation.Pages) > 0 || len(docs.Navigation.Groups) > 0 {
+		b.WriteString(`<section class="nav-section">`)
+		if len(docs.Navigation.Pages) > 0 {
+			writePages(&b, docs.Navigation.Pages)
+		}
+		for _, group := range docs.Navigation.Groups {
+			writeGroup(&b, group)
+		}
+		b.WriteString(`</section>`)
+	}
 	for _, dropdown := range docs.Navigation.Dropdowns {
 		b.WriteString(`<section class="nav-section"><h2>`)
 		b.WriteString(html.EscapeString(dropdown.Dropdown))
@@ -200,9 +210,23 @@ func navHTML(docs *config.Docs) string {
 func writeGroup(b *strings.Builder, group config.Group) {
 	b.WriteString(`<div class="nav-group"><h4>`)
 	b.WriteString(html.EscapeString(group.Group))
-	b.WriteString(`</h4><ul>`)
-	for _, page := range group.Pages {
-		if page.Group != "" || page.Path == "" {
+	b.WriteString(`</h4>`)
+	writePages(b, group.Pages)
+	b.WriteString(`</div>`)
+}
+
+func writePages(b *strings.Builder, pages []config.PageEntry) {
+	b.WriteString(`<ul>`)
+	for _, page := range pages {
+		if page.Group != "" {
+			b.WriteString(`<li class="nav-nested"><h5>`)
+			b.WriteString(html.EscapeString(page.Group))
+			b.WriteString(`</h5>`)
+			writePages(b, page.Pages)
+			b.WriteString(`</li>`)
+			continue
+		}
+		if page.Path == "" {
 			continue
 		}
 		route := config.CleanRoute(page.Path)
@@ -212,7 +236,7 @@ func writeGroup(b *strings.Builder, group config.Group) {
 		b.WriteString(html.EscapeString(label(page.Path)))
 		b.WriteString(`</a></li>`)
 	}
-	b.WriteString(`</ul></div>`)
+	b.WriteString(`</ul>`)
 }
 
 func tocHTML(headings []mdx.Heading) string {
