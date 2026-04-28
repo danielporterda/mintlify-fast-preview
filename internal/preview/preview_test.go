@@ -48,6 +48,29 @@ func TestHandlerIncludesCopyButtonScript(t *testing.T) {
 	}
 }
 
+func TestHandlerIncludesDarkModeControls(t *testing.T) {
+	handler, err := NewHandler(filepath.Join("..", "..", "testdata", "docs-main"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api-reference", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`class="mintfast-theme-toggle"`,
+		`localStorage.getItem('mintfast-theme')`,
+		`html[data-theme=dark] body`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+}
+
 func TestHandlerRendersRightRailTOC(t *testing.T) {
 	handler, err := NewHandler(filepath.Join("..", "..", "testdata", "docs-main"))
 	if err != nil {
