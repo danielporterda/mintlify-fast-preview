@@ -97,10 +97,13 @@ func RenderBody(markup string) string {
 	scanner := bufio.NewScanner(strings.NewReader(markup))
 	inCode := false
 	var codeLang string
+	var codeTitle string
 	var code bytes.Buffer
 	var paragraph []string
 	var listType string
 	var listItems []string
+	var tableLines []string
+	var quoteLines []string
 
 	flushParagraph := func() {
 		if len(paragraph) == 0 {
@@ -129,19 +132,40 @@ func RenderBody(markup string) string {
 		listItems = nil
 		listType = ""
 	}
+	flushTable := func() {
+		if len(tableLines) == 0 {
+			return
+		}
+		out.WriteString(renderTable(tableLines))
+		tableLines = nil
+	}
+	flushQuote := func() {
+		if len(quoteLines) == 0 {
+			return
+		}
+		out.WriteString("<blockquote>\n<p>")
+		out.WriteString(renderInline(strings.Join(quoteLines, " ")))
+		out.WriteString("</p>\n</blockquote>\n")
+		quoteLines = nil
+	}
+	flushBlocks := func() {
+		flushParagraph()
+		flushList()
+		flushTable()
+		flushQuote()
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "```") {
 			if !inCode {
-				flushParagraph()
-				flushList()
+				flushBlocks()
 				inCode = true
-				codeLang = strings.TrimSpace(strings.TrimPrefix(line, "```"))
+				codeLang, codeTitle = parseFenceInfo(strings.TrimSpace(strings.TrimPrefix(line, "```")))
 				code.Reset()
 				continue
 			}
-			out.WriteString(render.CodeBlock(codeLang, code.String()))
+			out.WriteString(render.CodeBlockWithTitle(codeLang, codeTitle, code.String()))
 			inCode = false
 			continue
 		}
@@ -150,8 +174,24 @@ func RenderBody(markup string) string {
 			code.WriteByte('\n')
 			continue
 		}
+		if tableLine(line) {
+			flushParagraph()
+			flushList()
+			flushQuote()
+			tableLines = append(tableLines, strings.TrimSpace(line))
+			continue
+		}
+		if quote, ok := blockquoteLine(line); ok {
+			flushParagraph()
+			flushList()
+			flushTable()
+			quoteLines = append(quoteLines, quote)
+			continue
+		}
 		if item, ok := unorderedItem(line); ok {
 			flushParagraph()
+			flushTable()
+			flushQuote()
 			if listType != "" && listType != "ul" {
 				flushList()
 			}
@@ -161,6 +201,8 @@ func RenderBody(markup string) string {
 		}
 		if item, ok := orderedItem(line); ok {
 			flushParagraph()
+			flushTable()
+			flushQuote()
 			if listType != "" && listType != "ol" {
 				flushList()
 			}
@@ -170,20 +212,19 @@ func RenderBody(markup string) string {
 		}
 		rendered, block := renderLine(line)
 		if block {
-			flushParagraph()
-			flushList()
+			flushBlocks()
 			out.WriteString(rendered)
 			continue
 		}
 		if strings.TrimSpace(line) == "" {
-			flushParagraph()
-			flushList()
+			flushBlocks()
 			continue
 		}
+		flushTable()
+		flushQuote()
 		paragraph = append(paragraph, strings.TrimSpace(line))
 	}
-	flushParagraph()
-	flushList()
+	flushBlocks()
 	return out.String()
 }
 
@@ -201,23 +242,49 @@ func renderLine(line string) (string, bool) {
 	case strings.HasPrefix(trimmed, "### "):
 		text := strings.TrimSpace(strings.TrimPrefix(trimmed, "### "))
 		return `<h3 id="` + slug(text) + `">` + html.EscapeString(text) + "</h3>\n", true
+	case strings.HasPrefix(trimmed, "#### "):
+		text := strings.TrimSpace(strings.TrimPrefix(trimmed, "#### "))
+		return `<h4 id="` + slug(text) + `">` + html.EscapeString(text) + "</h4>\n", true
+	case strings.HasPrefix(trimmed, "##### "):
+		text := strings.TrimSpace(strings.TrimPrefix(trimmed, "##### "))
+		return `<h5 id="` + slug(text) + `">` + html.EscapeString(text) + "</h5>\n", true
+	case strings.HasPrefix(trimmed, "###### "):
+		text := strings.TrimSpace(strings.TrimPrefix(trimmed, "###### "))
+		return `<h6 id="` + slug(text) + `">` + html.EscapeString(text) + "</h6>\n", true
+	case trimmed == "---" || trimmed == "***" || trimmed == "___":
+		return "<hr>\n", true
 	case strings.HasPrefix(trimmed, "<Warning"):
-		return render.Admonition("warning", componentTitle(trimmed)) + "\n", true
+		return admonitionTag("warning", trimmed), true
+	case strings.HasPrefix(trimmed, "</Warning"):
+		return "</aside>\n", true
 	case strings.HasPrefix(trimmed, "<Info"):
-		return render.Admonition("info", componentTitle(trimmed)) + "\n", true
+		return admonitionTag("info", trimmed), true
+	case strings.HasPrefix(trimmed, "</Info"):
+		return "</aside>\n", true
 	case strings.HasPrefix(trimmed, "<Note"):
-		return render.Admonition("note", componentTitle(trimmed)) + "\n", true
+		return admonitionTag("note", trimmed), true
+	case strings.HasPrefix(trimmed, "</Note"):
+		return "</aside>\n", true
 	case strings.HasPrefix(trimmed, "<Tip"):
-		return render.Admonition("tip", componentTitle(trimmed)) + "\n", true
+		return admonitionTag("tip", trimmed), true
+	case strings.HasPrefix(trimmed, "</Tip"):
+		return "</aside>\n", true
 	case strings.HasPrefix(trimmed, "<Columns"):
 		return `<div class="mintfast-columns">` + "\n", true
 	case strings.HasPrefix(trimmed, "</Columns"):
+		return "</div>\n", true
+	case strings.HasPrefix(trimmed, "<CardGroup"):
+		return `<div class="mintfast-card-group">` + "\n", true
+	case strings.HasPrefix(trimmed, "</CardGroup"):
 		return "</div>\n", true
 	case strings.HasPrefix(trimmed, "<Column"):
 		return `<div class="mintfast-column">` + "\n", true
 	case strings.HasPrefix(trimmed, "</Column"):
 		return "</div>\n", true
 	case strings.HasPrefix(trimmed, "<Card"):
+		if selfClosing(trimmed) {
+			return render.CardOpen(componentTitle(trimmed), attr(trimmed, "href")) + "</a>\n", true
+		}
 		return render.CardOpen(componentTitle(trimmed), attr(trimmed, "href")) + "\n", true
 	case strings.HasPrefix(trimmed, "</Card"):
 		return "</a>\n", true
@@ -229,6 +296,46 @@ func renderLine(line string) (string, bool) {
 		return `<details class="mintfast-accordion" open><summary>` + html.EscapeString(componentTitle(trimmed)) + `</summary>` + "\n", true
 	case strings.HasPrefix(trimmed, "</Accordion"):
 		return "</details>\n", true
+	case strings.HasPrefix(trimmed, "<Frame"):
+		return `<figure class="mintfast-frame">` + "\n", true
+	case strings.HasPrefix(trimmed, "</Frame"):
+		return "</figure>\n", true
+	case strings.HasPrefix(trimmed, "<Steps"):
+		return `<div class="mintfast-steps">` + "\n", true
+	case strings.HasPrefix(trimmed, "</Steps"):
+		return "</div>\n", true
+	case strings.HasPrefix(trimmed, "<Step"):
+		return `<section class="mintfast-step"><h3>` + html.EscapeString(componentTitle(trimmed)) + "</h3>\n", true
+	case strings.HasPrefix(trimmed, "</Step"):
+		return "</section>\n", true
+	case strings.HasPrefix(trimmed, "<Tabs"):
+		return `<div class="mintfast-tabs">` + "\n", true
+	case strings.HasPrefix(trimmed, "</Tabs"):
+		return "</div>\n", true
+	case strings.HasPrefix(trimmed, "<Tab"):
+		return `<section class="mintfast-tab"><h3>` + html.EscapeString(componentTitle(trimmed)) + "</h3>\n", true
+	case strings.HasPrefix(trimmed, "</Tab"):
+		return "</section>\n", true
+	case strings.HasPrefix(trimmed, "<CodeGroup"):
+		return `<div class="mintfast-code-group">` + "\n", true
+	case strings.HasPrefix(trimmed, "</CodeGroup"):
+		return "</div>\n", true
+	case strings.HasPrefix(trimmed, "<ParamField"):
+		return fieldOpen("param", trimmed) + "\n", true
+	case strings.HasPrefix(trimmed, "</ParamField"):
+		return "</div>\n", true
+	case strings.HasPrefix(trimmed, "<ResponseField"):
+		return fieldOpen("response", trimmed) + "\n", true
+	case strings.HasPrefix(trimmed, "</ResponseField"):
+		return "</div>\n", true
+	case strings.HasPrefix(trimmed, "<RequestExample"):
+		return `<div class="mintfast-example mintfast-example-request">` + "\n", true
+	case strings.HasPrefix(trimmed, "</RequestExample"):
+		return "</div>\n", true
+	case strings.HasPrefix(trimmed, "<ResponseExample"):
+		return `<div class="mintfast-example mintfast-example-response">` + "\n", true
+	case strings.HasPrefix(trimmed, "</ResponseExample"):
+		return "</div>\n", true
 	case strings.HasPrefix(trimmed, "<VersionDashboard"):
 		return render.Compatibility("VersionDashboard") + "\n", true
 	case isHTMLLine(trimmed):
@@ -242,6 +349,17 @@ func renderLine(line string) (string, bool) {
 
 func componentTitle(line string) string {
 	return attr(line, "title")
+}
+
+func admonitionTag(kind, line string) string {
+	if selfClosing(line) {
+		return render.Admonition(kind, componentTitle(line)) + "\n"
+	}
+	return render.AdmonitionOpen(kind, componentTitle(line)) + "\n"
+}
+
+func selfClosing(line string) bool {
+	return strings.HasSuffix(strings.TrimSpace(line), "/>")
 }
 
 func attr(line, name string) string {
@@ -279,6 +397,30 @@ func isHTMLLine(line string) bool {
 func normalizeHTML(line string) string {
 	replacer := strings.NewReplacer("className=", "class=")
 	return replacer.Replace(line)
+}
+
+func fieldOpen(kind, line string) string {
+	name := attr(line, "path")
+	if name == "" {
+		name = attr(line, "name")
+	}
+	fieldType := attr(line, "type")
+	var b strings.Builder
+	b.WriteString(`<div class="mintfast-field mintfast-field-`)
+	b.WriteString(kind)
+	b.WriteString(`"><div class="mintfast-field-head"><code>`)
+	b.WriteString(html.EscapeString(name))
+	b.WriteString(`</code>`)
+	if fieldType != "" {
+		b.WriteString(`<span class="mintfast-field-type">`)
+		b.WriteString(html.EscapeString(fieldType))
+		b.WriteString(`</span>`)
+	}
+	if strings.Contains(line, " required") || strings.Contains(line, " required>") {
+		b.WriteString(`<span class="mintfast-field-required">required</span>`)
+	}
+	b.WriteString(`</div>`)
+	return b.String()
 }
 
 func isUnknownComponent(line string) bool {
@@ -332,6 +474,96 @@ func oldComponentTitle(line string) string {
 	return rest[:end]
 }
 
+func tableLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "|") && strings.HasSuffix(trimmed, "|") && strings.Count(trimmed, "|") >= 2
+}
+
+func renderTable(lines []string) string {
+	if len(lines) < 2 || !tableSeparator(lines[1]) {
+		var b strings.Builder
+		for _, line := range lines {
+			b.WriteString("<p>")
+			b.WriteString(renderInline(line))
+			b.WriteString("</p>\n")
+		}
+		return b.String()
+	}
+	var b strings.Builder
+	headers := splitTableRow(lines[0])
+	b.WriteString("<table>\n<thead>\n<tr>")
+	for _, header := range headers {
+		b.WriteString("<th>")
+		b.WriteString(renderInline(header))
+		b.WriteString("</th>")
+	}
+	b.WriteString("</tr>\n</thead>\n<tbody>\n")
+	for _, line := range lines[2:] {
+		b.WriteString("<tr>")
+		for _, cell := range splitTableRow(line) {
+			b.WriteString("<td>")
+			b.WriteString(renderInline(cell))
+			b.WriteString("</td>")
+		}
+		b.WriteString("</tr>\n")
+	}
+	b.WriteString("</tbody>\n</table>\n")
+	return b.String()
+}
+
+func tableSeparator(line string) bool {
+	cells := splitTableRow(line)
+	if len(cells) == 0 {
+		return false
+	}
+	for _, cell := range cells {
+		cleaned := strings.Trim(cell, " :-")
+		if cleaned != "" {
+			return false
+		}
+		if !strings.Contains(cell, "-") {
+			return false
+		}
+	}
+	return true
+}
+
+func splitTableRow(line string) []string {
+	trimmed := strings.TrimSpace(line)
+	trimmed = strings.TrimPrefix(trimmed, "|")
+	trimmed = strings.TrimSuffix(trimmed, "|")
+	var cells []string
+	var current strings.Builder
+	escaped := false
+	for _, r := range trimmed {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == '|' {
+			cells = append(cells, strings.TrimSpace(current.String()))
+			current.Reset()
+			continue
+		}
+		current.WriteRune(r)
+	}
+	cells = append(cells, strings.TrimSpace(current.String()))
+	return cells
+}
+
+func blockquoteLine(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, ">") {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(trimmed, ">")), true
+}
+
 func unorderedItem(line string) (string, bool) {
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
@@ -367,6 +599,26 @@ func renderInline(input string) string {
 				continue
 			}
 		}
+		if strings.HasPrefix(input[i:], "![") {
+			closeText := strings.IndexByte(input[i+2:], ']')
+			if closeText >= 0 {
+				openURL := i + 2 + closeText + 1
+				if openURL < len(input) && input[openURL] == '(' {
+					closeURL := strings.IndexByte(input[openURL+1:], ')')
+					if closeURL >= 0 {
+						alt := input[i+2 : i+2+closeText]
+						url := input[openURL+1 : openURL+1+closeURL]
+						out.WriteString(`<img src="`)
+						out.WriteString(html.EscapeString(url))
+						out.WriteString(`" alt="`)
+						out.WriteString(html.EscapeString(alt))
+						out.WriteString(`">`)
+						i = openURL + closeURL + 2
+						continue
+					}
+				}
+			}
+		}
 		if input[i] == '[' {
 			closeText := strings.IndexByte(input[i+1:], ']')
 			if closeText >= 0 {
@@ -387,8 +639,53 @@ func renderInline(input string) string {
 				}
 			}
 		}
+		if strings.HasPrefix(input[i:], "**") {
+			end := strings.Index(input[i+2:], "**")
+			if end >= 0 {
+				out.WriteString("<strong>")
+				out.WriteString(renderInline(input[i+2 : i+2+end]))
+				out.WriteString("</strong>")
+				i += end + 4
+				continue
+			}
+		}
+		if strings.HasPrefix(input[i:], "~~") {
+			end := strings.Index(input[i+2:], "~~")
+			if end >= 0 {
+				out.WriteString("<del>")
+				out.WriteString(renderInline(input[i+2 : i+2+end]))
+				out.WriteString("</del>")
+				i += end + 4
+				continue
+			}
+		}
+		if input[i] == '*' {
+			end := strings.IndexByte(input[i+1:], '*')
+			if end >= 0 {
+				out.WriteString("<em>")
+				out.WriteString(renderInline(input[i+1 : i+1+end]))
+				out.WriteString("</em>")
+				i += end + 2
+				continue
+			}
+		}
 		out.WriteString(html.EscapeString(input[i : i+1]))
 		i++
 	}
 	return out.String()
+}
+
+func parseFenceInfo(info string) (language, title string) {
+	info = strings.TrimSpace(info)
+	if info == "" {
+		return "", ""
+	}
+	fields := strings.Fields(info)
+	language = fields[0]
+	if len(fields) == 1 {
+		return language, ""
+	}
+	title = strings.TrimSpace(strings.TrimPrefix(info, language))
+	title = strings.Trim(title, `"`)
+	return language, title
 }

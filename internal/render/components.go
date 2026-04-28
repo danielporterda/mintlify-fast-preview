@@ -6,16 +6,37 @@ import (
 )
 
 func Admonition(kind, title string) string {
+	return AdmonitionOpen(kind, title) + "</aside>"
+}
+
+func AdmonitionOpen(kind, title string) string {
 	escapedKind := html.EscapeString(kind)
 	escapedTitle := html.EscapeString(title)
 	if escapedTitle == "" {
 		escapedTitle = escapedKind
 	}
-	return `<aside class="mintfast-admonition mintfast-admonition-` + escapedKind + `"><strong>` + escapedTitle + `</strong></aside>`
+	return `<aside class="mintfast-admonition mintfast-admonition-` + escapedKind + `"><strong>` + escapedTitle + `</strong>`
 }
 
 func CodeBlock(language, code string) string {
-	return `<pre class="mintfast-code"><code data-language="` + html.EscapeString(language) + `">` + html.EscapeString(code) + `</code></pre>` + "\n"
+	return CodeBlockWithTitle(language, "", code)
+}
+
+func CodeBlockWithTitle(language, title, code string) string {
+	var b strings.Builder
+	b.WriteString(`<div class="mintfast-code-block">`)
+	if title != "" {
+		b.WriteString(`<div class="mintfast-code-title">`)
+		b.WriteString(html.EscapeString(title))
+		b.WriteString(`</div>`)
+	}
+	b.WriteString(`<pre class="mintfast-code"><code data-language="`)
+	b.WriteString(html.EscapeString(language))
+	b.WriteString(`">`)
+	b.WriteString(html.EscapeString(code))
+	b.WriteString(`</code></pre></div>`)
+	b.WriteString("\n")
+	return b.String()
 }
 
 func Card(title, href string) string {

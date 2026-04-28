@@ -25,6 +25,16 @@ func TestCodeBlockEscapesCode(t *testing.T) {
 	}
 }
 
+func TestCodeBlockWithTitle(t *testing.T) {
+	got := CodeBlockWithTitle("bash", "grpcurl", "echo ok")
+	if !strings.Contains(got, `data-language="bash"`) {
+		t.Fatalf("missing language: %s", got)
+	}
+	if !strings.Contains(got, `<div class="mintfast-code-title">grpcurl</div>`) {
+		t.Fatalf("missing title: %s", got)
+	}
+}
+
 func TestCardEscapesHrefAndTitle(t *testing.T) {
 	got := Card(`A&B`, `/x?y=1&z=2`)
 	if !strings.Contains(got, "A&amp;B") || !strings.Contains(got, "&amp;z=2") {
