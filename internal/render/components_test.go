@@ -23,6 +23,9 @@ func TestCodeBlockEscapesCode(t *testing.T) {
 	if !strings.Contains(got, `data-language="go"`) {
 		t.Fatalf("missing language: %s", got)
 	}
+	if !strings.Contains(got, `<button class="mintfast-copy" type="button" aria-label="Copy code">Copy</button>`) {
+		t.Fatalf("missing copy button: %s", got)
+	}
 }
 
 func TestCodeBlockWithTitle(t *testing.T) {

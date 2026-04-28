@@ -30,6 +30,7 @@ func CodeBlockWithTitle(language, title, code string) string {
 		b.WriteString(html.EscapeString(title))
 		b.WriteString(`</div>`)
 	}
+	b.WriteString(`<button class="mintfast-copy" type="button" aria-label="Copy code">Copy</button>`)
 	b.WriteString(`<pre class="mintfast-code"><code data-language="`)
 	b.WriteString(html.EscapeString(language))
 	b.WriteString(`">`)

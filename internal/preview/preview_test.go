@@ -31,6 +31,40 @@ func TestHandlerServesRenderedRoute(t *testing.T) {
 	}
 }
 
+func TestHandlerIncludesCopyButtonScript(t *testing.T) {
+	handler, err := NewHandler(filepath.Join("..", "..", "testdata", "docs-main"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/reference/protobuf/operations/com-digitalasset-canton-admin-mediator-v30/mediatorstatusservice/mediatorstatus", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="mintfast-copy"`) || !strings.Contains(body, `navigator.clipboard.writeText`) {
+		t.Fatalf("missing copy button behavior: %s", body)
+	}
+}
+
+func TestHandlerRendersRightRailTOC(t *testing.T) {
+	handler, err := NewHandler(filepath.Join("..", "..", "testdata", "docs-main"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/reference/protobuf/operations/com-digitalasset-canton-admin-mediator-v30/mediatorstatusservice/mediatorstatus", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `<aside class="toc"><strong>On this page</strong><a href="#request" class="toc-level-2">Request</a>`) {
+		t.Fatalf("missing right rail toc: %s", body)
+	}
+}
+
 func TestHandlerRejectsUnsupportedMethods(t *testing.T) {
 	handler, err := NewHandler(filepath.Join("..", "..", "testdata", "docs-main"))
 	if err != nil {

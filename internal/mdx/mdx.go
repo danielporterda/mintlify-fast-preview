@@ -19,8 +19,22 @@ type Document struct {
 	Imports     map[string]string
 }
 
+type Rendered struct {
+	HTML     string
+	Headings []Heading
+}
+
+type Heading struct {
+	Level int
+	ID    string
+	Text  string
+}
+
 var importRE = regexp.MustCompile(`^import\s+(.+?)\s+from\s+["']([^"']+)["'];?\s*$`)
 var defaultImportRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var imageTextRE = regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`)
+var linkTextRE = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+var htmlTagRE = regexp.MustCompile(`<[^>]+>`)
 
 func Parse(source string) Document {
 	frontmatter, body := parseFrontmatter(source)
@@ -93,6 +107,10 @@ func resolveImport(root, importPath string) (string, error) {
 }
 
 func RenderBody(markup string) string {
+	return Render(markup).HTML
+}
+
+func Render(markup string) Rendered {
 	var out bytes.Buffer
 	scanner := bufio.NewScanner(strings.NewReader(markup))
 	inCode := false
@@ -104,6 +122,8 @@ func RenderBody(markup string) string {
 	var listItems []string
 	var tableLines []string
 	var quoteLines []string
+	var headings []Heading
+	ids := newSlugger()
 
 	flushParagraph := func() {
 		if len(paragraph) == 0 {
@@ -174,6 +194,24 @@ func RenderBody(markup string) string {
 			code.WriteByte('\n')
 			continue
 		}
+		if level, text, ok := headingLine(line); ok {
+			flushBlocks()
+			plain := inlineText(text)
+			id := ids.id(plain)
+			if level == 2 || level == 3 {
+				headings = append(headings, Heading{Level: level, ID: id, Text: plain})
+			}
+			out.WriteString("<h")
+			out.WriteString(fmt.Sprint(level))
+			out.WriteString(` id="`)
+			out.WriteString(id)
+			out.WriteString(`">`)
+			out.WriteString(renderInline(text))
+			out.WriteString("</h")
+			out.WriteString(fmt.Sprint(level))
+			out.WriteString(">\n")
+			continue
+		}
 		if tableLine(line) {
 			flushParagraph()
 			flushList()
@@ -225,7 +263,7 @@ func RenderBody(markup string) string {
 		paragraph = append(paragraph, strings.TrimSpace(line))
 	}
 	flushBlocks()
-	return out.String()
+	return Rendered{HTML: out.String(), Headings: headings}
 }
 
 func renderLine(line string) (string, bool) {
@@ -458,6 +496,51 @@ func slug(text string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+type slugger struct {
+	seen map[string]int
+}
+
+func newSlugger() *slugger {
+	return &slugger{seen: map[string]int{}}
+}
+
+func (s *slugger) id(text string) string {
+	base := slug(text)
+	if base == "" {
+		base = "section"
+	}
+	count := s.seen[base]
+	s.seen[base] = count + 1
+	if count == 0 {
+		return base
+	}
+	return fmt.Sprintf("%s-%d", base, count)
+}
+
+func headingLine(line string) (int, string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "#") {
+		return 0, "", false
+	}
+	level := 0
+	for level < len(trimmed) && trimmed[level] == '#' {
+		level++
+	}
+	if level == 0 || level > 6 || level >= len(trimmed) || trimmed[level] != ' ' {
+		return 0, "", false
+	}
+	return level, strings.TrimSpace(trimmed[level+1:]), true
+}
+
+func inlineText(input string) string {
+	text := imageTextRE.ReplaceAllString(input, "$1")
+	text = linkTextRE.ReplaceAllString(text, "$1")
+	text = htmlTagRE.ReplaceAllString(text, "")
+	replacer := strings.NewReplacer("`", "", "**", "", "__", "", "~~", "", "*", "", "_", "")
+	text = replacer.Replace(text)
+	return strings.Join(strings.Fields(text), " ")
 }
 
 func oldComponentTitle(line string) string {

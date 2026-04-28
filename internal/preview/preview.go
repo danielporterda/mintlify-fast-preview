@@ -68,7 +68,8 @@ func RenderPage(root string, docs *config.Docs, route site.Route) (string, error
 	if title == "" {
 		title = docs.Name
 	}
-	return shell(root, docs, title, mdx.RenderBody(body)), nil
+	rendered := mdx.Render(body)
+	return shell(root, docs, title, rendered.HTML, rendered.Headings), nil
 }
 
 func Serve(root, host string, port int, noOpen bool) error {
@@ -83,12 +84,12 @@ func Serve(root, host string, port int, noOpen bool) error {
 	return http.ListenAndServe(addr, handler)
 }
 
-func shell(root string, docs *config.Docs, title, body string) string {
+func shell(root string, docs *config.Docs, title, body string, headings []mdx.Heading) string {
 	primary := docs.Colors.Primary
 	if primary == "" {
 		primary = "#5c4ee5"
 	}
-	return "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + html.EscapeString(title) + "</title><style>" + baseCSS(primary) + "</style>" + customCSS(root) + liveReloadScript() + "</head><body><div class=\"layout\"><nav class=\"nav\"><strong class=\"brand\">" + html.EscapeString(docs.Name) + "</strong>" + navHTML(docs) + "</nav><main class=\"content\">" + body + "</main><aside class=\"toc\"><strong>On this page</strong></aside></div></body></html>"
+	return "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + html.EscapeString(title) + "</title><style>" + baseCSS(primary) + "</style>" + customCSS(root) + liveReloadScript() + copyButtonScript() + "</head><body><div class=\"layout\"><nav class=\"nav\"><strong class=\"brand\">" + html.EscapeString(docs.Name) + "</strong>" + navHTML(docs) + "</nav><main class=\"content\">" + body + "</main>" + tocHTML(headings) + "</div></body></html>"
 }
 
 type Handler struct {
@@ -214,6 +215,22 @@ func writeGroup(b *strings.Builder, group config.Group) {
 	b.WriteString(`</ul></div>`)
 }
 
+func tocHTML(headings []mdx.Heading) string {
+	var b strings.Builder
+	b.WriteString(`<aside class="toc"><strong>On this page</strong>`)
+	for _, heading := range headings {
+		b.WriteString(`<a href="#`)
+		b.WriteString(html.EscapeString(heading.ID))
+		b.WriteString(`" class="toc-level-`)
+		b.WriteString(fmt.Sprint(heading.Level))
+		b.WriteString(`">`)
+		b.WriteString(html.EscapeString(heading.Text))
+		b.WriteString(`</a>`)
+	}
+	b.WriteString(`</aside>`)
+	return b.String()
+}
+
 func label(page string) string {
 	trimmed := strings.TrimSuffix(strings.Trim(page, "/"), "/index")
 	base := filepath.Base(trimmed)
@@ -226,7 +243,7 @@ func label(page string) string {
 }
 
 func baseCSS(primary string) string {
-	return `:root{--mintfast-primary:` + primary + `;--border:#e5e7eb;--muted:#6b7280;--code:#0f172a;--soft:#f9fafb}*{box-sizing:border-box}body{font-family:Inter,system-ui,sans-serif;margin:0;color:#111827;background:#fff}.layout{display:grid;grid-template-columns:280px minmax(0,1fr)220px;min-height:100vh}.nav{border-right:1px solid var(--border);padding:1rem;overflow:auto}.brand{display:block;margin-bottom:1rem}.nav h2{font-size:.8rem;text-transform:uppercase;color:var(--muted);margin:1rem 0 .5rem}.nav h3{font-size:.85rem;margin:.75rem 0 .4rem}.nav h4{font-size:.8rem;margin:.75rem 0 .25rem}.nav ul{list-style:none;margin:0;padding:0}.nav a{display:block;color:#374151;text-decoration:none;padding:.25rem 0}.content{padding:2rem;max-width:92rem;width:100%}.toc{border-left:1px solid var(--border);padding:1rem;color:var(--muted)}h1{font-size:2rem;line-height:1.2}h2{font-size:1.35rem;margin-top:2rem}a{color:var(--mintfast-primary)}table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}th,td{border:1px solid var(--border);padding:.55rem .7rem;text-align:left;vertical-align:top}th{background:var(--soft);font-weight:650}blockquote{border-left:4px solid var(--border);margin:1rem 0;padding:.25rem 1rem;color:#4b5563;background:var(--soft)}hr{border:0;border-top:1px solid var(--border);margin:2rem 0}.mintfast-code-block{margin:1rem 0}.mintfast-code-title{background:#111827;color:#d1d5db;border-radius:8px 8px 0 0;padding:.45rem .75rem;font-size:.8rem;border-bottom:1px solid #374151}.mintfast-code-title+.mintfast-code{border-radius:0 0 8px 8px;margin-top:0}.mintfast-code{background:var(--code);color:#e2e8f0;border-radius:8px;padding:1rem;overflow:auto}.mintfast-card{display:block;border:1px solid var(--border);border-radius:8px;padding:1rem;text-decoration:none;color:inherit}.mintfast-card p{margin:.5rem 0 0}.mintfast-columns,.mintfast-card-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.mintfast-admonition{display:block;border:1px solid var(--border);border-left:4px solid var(--mintfast-primary);border-radius:8px;padding:1rem;margin:1rem 0}.mintfast-admonition-warning{border-left-color:#f59e0b}.mintfast-accordion,.mintfast-frame,.mintfast-step,.mintfast-tab,.mintfast-field{border:1px solid var(--border);border-radius:8px;padding:1rem;margin:.75rem 0}.mintfast-frame img{max-width:100%;height:auto}.mintfast-steps,.mintfast-tabs,.mintfast-code-group{display:grid;gap:.75rem;margin:1rem 0}.mintfast-field-head{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}.mintfast-field-type,.mintfast-field-required{font-size:.75rem;border:1px solid var(--border);border-radius:999px;padding:.1rem .45rem;color:#4b5563}.mintfast-field-required{border-color:#f59e0b;color:#92400e}.mintfast-compat{border:1px dashed #a78bfa;background:#faf5ff;border-radius:8px;padding:1rem}.x2mdx-ref-operation-shell{display:grid;grid-template-columns:minmax(0,1fr)360px;gap:2rem}.x2mdx-ref-right-rail{position:sticky;top:1rem;align-self:start}@media(max-width:900px){.layout{grid-template-columns:1fr}.nav,.toc{display:none}.mintfast-columns,.mintfast-card-group,.x2mdx-ref-operation-shell{grid-template-columns:1fr}}`
+	return `:root{--mintfast-primary:` + primary + `;--border:#e5e7eb;--muted:#6b7280;--code:#0f172a;--soft:#f9fafb}*{box-sizing:border-box}body{font-family:Inter,system-ui,sans-serif;margin:0;color:#111827;background:#fff}.layout{display:grid;grid-template-columns:280px minmax(0,1fr)220px;min-height:100vh}.nav{border-right:1px solid var(--border);padding:1rem;overflow:auto}.brand{display:block;margin-bottom:1rem}.nav h2{font-size:.8rem;text-transform:uppercase;color:var(--muted);margin:1rem 0 .5rem}.nav h3{font-size:.85rem;margin:.75rem 0 .4rem}.nav h4{font-size:.8rem;margin:.75rem 0 .25rem}.nav ul{list-style:none;margin:0;padding:0}.nav a{display:block;color:#374151;text-decoration:none;padding:.25rem 0}.content{padding:2rem;max-width:92rem;width:100%}.toc{border-left:1px solid var(--border);padding:1rem;color:var(--muted)}.toc strong{display:block;margin-bottom:.75rem}.toc a{display:block;text-decoration:none;color:#4b5563;font-size:.85rem;line-height:1.35;padding:.25rem 0}.toc-level-3{padding-left:.75rem}h1{font-size:2rem;line-height:1.2}h2{font-size:1.35rem;margin-top:2rem}a{color:var(--mintfast-primary)}table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem}th,td{border:1px solid var(--border);padding:.55rem .7rem;text-align:left;vertical-align:top}th{background:var(--soft);font-weight:650}blockquote{border-left:4px solid var(--border);margin:1rem 0;padding:.25rem 1rem;color:#4b5563;background:var(--soft)}hr{border:0;border-top:1px solid var(--border);margin:2rem 0}.mintfast-code-block{position:relative;margin:1rem 0}.mintfast-copy{position:absolute;right:.5rem;top:.5rem;border:1px solid #475569;background:#1f2937;color:#e5e7eb;border-radius:6px;padding:.2rem .45rem;font-size:.75rem;cursor:pointer}.mintfast-code-title{background:#111827;color:#d1d5db;border-radius:8px 8px 0 0;padding:.45rem .75rem;font-size:.8rem;border-bottom:1px solid #374151}.mintfast-code-title+.mintfast-copy{top:.42rem}.mintfast-code-title~.mintfast-code{border-radius:0 0 8px 8px;margin-top:0}.mintfast-code{background:var(--code);color:#e2e8f0;border-radius:8px;padding:1rem;overflow:auto}.mintfast-card{display:block;border:1px solid var(--border);border-radius:8px;padding:1rem;text-decoration:none;color:inherit}.mintfast-card p{margin:.5rem 0 0}.mintfast-columns,.mintfast-card-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.mintfast-admonition{display:block;border:1px solid var(--border);border-left:4px solid var(--mintfast-primary);border-radius:8px;padding:1rem;margin:1rem 0}.mintfast-admonition-warning{border-left-color:#f59e0b}.mintfast-accordion,.mintfast-frame,.mintfast-step,.mintfast-tab,.mintfast-field{border:1px solid var(--border);border-radius:8px;padding:1rem;margin:.75rem 0}.mintfast-frame img{max-width:100%;height:auto}.mintfast-steps,.mintfast-tabs,.mintfast-code-group{display:grid;gap:.75rem;margin:1rem 0}.mintfast-field-head{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}.mintfast-field-type,.mintfast-field-required{font-size:.75rem;border:1px solid var(--border);border-radius:999px;padding:.1rem .45rem;color:#4b5563}.mintfast-field-required{border-color:#f59e0b;color:#92400e}.mintfast-compat{border:1px dashed #a78bfa;background:#faf5ff;border-radius:8px;padding:1rem}.x2mdx-ref-operation-shell{display:grid;grid-template-columns:minmax(0,1fr)360px;gap:2rem}.x2mdx-ref-right-rail{position:sticky;top:1rem;align-self:start}@media(max-width:900px){.layout{grid-template-columns:1fr}.nav,.toc{display:none}.mintfast-columns,.mintfast-card-group,.x2mdx-ref-operation-shell{grid-template-columns:1fr}}`
 }
 
 func customCSS(root string) string {
@@ -238,6 +255,10 @@ func customCSS(root string) string {
 
 func liveReloadScript() string {
 	return `<script>try{new EventSource('/_mintfast/events').addEventListener('reload',()=>location.reload())}catch(e){}</script>`
+}
+
+func copyButtonScript() string {
+	return `<script>document.addEventListener('click',async(e)=>{const b=e.target.closest('.mintfast-copy');if(!b)return;const c=b.parentElement&&b.parentElement.querySelector('code');if(!c||!navigator.clipboard)return;await navigator.clipboard.writeText(c.innerText);b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1200);});</script>`
 }
 
 func buildSearchIndex(root string, docs *config.Docs, routes []site.Route) *search.Index {

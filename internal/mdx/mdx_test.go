@@ -63,6 +63,35 @@ func TestRenderBodyHeadingsAndCode(t *testing.T) {
 	}
 }
 
+func TestRenderCollectsHeadingsForTOC(t *testing.T) {
+	rendered := Render("# Page\n\n## Install `mintfast`\n\n### From source\n\n#### Hidden depth")
+	if len(rendered.Headings) != 2 {
+		t.Fatalf("headings = %+v", rendered.Headings)
+	}
+	if rendered.Headings[0].Level != 2 || rendered.Headings[0].ID != "install-mintfast" || rendered.Headings[0].Text != "Install mintfast" {
+		t.Fatalf("first heading = %+v", rendered.Headings[0])
+	}
+	if rendered.Headings[1].Level != 3 || rendered.Headings[1].ID != "from-source" {
+		t.Fatalf("second heading = %+v", rendered.Headings[1])
+	}
+	if !strings.Contains(rendered.HTML, `<h2 id="install-mintfast">Install <code>mintfast</code></h2>`) {
+		t.Fatalf("missing rendered heading inline markup: %s", rendered.HTML)
+	}
+}
+
+func TestRenderDeduplicatesHeadingIDs(t *testing.T) {
+	rendered := Render("## Install\n\n## Install\n\n### Install")
+	for _, want := range []string{
+		`<h2 id="install">Install</h2>`,
+		`<h2 id="install-1">Install</h2>`,
+		`<h3 id="install-2">Install</h3>`,
+	} {
+		if !strings.Contains(rendered.HTML, want) {
+			t.Fatalf("missing %q in %s", want, rendered.HTML)
+		}
+	}
+}
+
 func TestRenderBodyCodeFenceMetadata(t *testing.T) {
 	got := RenderBody("```bash grpcurl\necho ok\n```")
 	if !strings.Contains(got, `data-language="bash"`) {
