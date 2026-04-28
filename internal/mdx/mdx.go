@@ -401,17 +401,20 @@ func selfClosing(line string) bool {
 }
 
 func attr(line, name string) string {
-	key := name + `="`
+	key := name + `=`
 	start := strings.Index(line, key)
 	if start < 0 {
-		key = name + `='`
-		start = strings.Index(line, key)
-		if start < 0 {
-			return ""
-		}
+		return ""
 	}
-	quote := key[len(key)-1]
-	rest := line[start+len(key):]
+	rest := strings.TrimSpace(line[start+len(key):])
+	if strings.HasPrefix(rest, "{") {
+		rest = strings.TrimSpace(strings.TrimPrefix(rest, "{"))
+	}
+	if rest == "" || (rest[0] != '"' && rest[0] != '\'') {
+		return ""
+	}
+	quote := rest[0]
+	rest = rest[1:]
 	end := strings.IndexRune(rest, rune(quote))
 	if end < 0 {
 		return ""

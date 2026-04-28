@@ -242,3 +242,10 @@ Heads up.
 		}
 	}
 }
+
+func TestRenderBodyParsesExpressionStringProps(t *testing.T) {
+	got := RenderBody(`<Card title={"Go SDK"} href={'/sdks/go'} />`)
+	if !strings.Contains(got, `<a class="mintfast-card" href="/sdks/go"><strong>Go SDK</strong></a>`) {
+		t.Fatalf("expression string props were not parsed: %s", got)
+	}
+}
