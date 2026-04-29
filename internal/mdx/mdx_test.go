@@ -30,6 +30,35 @@ func TestParseDropsNamedImportsWithoutSnippetReplacement(t *testing.T) {
 	}
 }
 
+func TestParseDropsExportedReactBlocksAndJSXComments(t *testing.T) {
+	doc := Parse(`---
+title: Dashboard
+---
+import { networkData } from '/snippets/generated/data.mdx';
+
+export const Tooltip = ({ children }) => {
+  return (
+    <span>{children}</span>
+  )
+}
+
+{/* COPIED_START: some/source */}
+Visible text
+{/* COPIED_END */}
+
+<Note>Keep me</Note>
+<VersionDashboard />
+`)
+	if strings.Contains(doc.Body, "export const Tooltip") || strings.Contains(doc.Body, "COPIED_START") {
+		t.Fatalf("export/jsx comment leaked into body: %s", doc.Body)
+	}
+	for _, want := range []string{"Visible text", "<Note>Keep me</Note>", "<VersionDashboard />"} {
+		if !strings.Contains(doc.Body, want) {
+			t.Fatalf("missing %q in %s", want, doc.Body)
+		}
+	}
+}
+
 func TestResolveImports(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "snippets"), 0o755); err != nil {

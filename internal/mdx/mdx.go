@@ -42,18 +42,71 @@ func Parse(source string) Document {
 	imports := map[string]string{}
 	var kept []string
 	scanner := bufio.NewScanner(strings.NewReader(body))
+	inCode := false
+	skipComment := false
+	skipExport := false
+	exportDepth := 0
 	for scanner.Scan() {
 		line := scanner.Text()
-		if match := importRE.FindStringSubmatch(strings.TrimSpace(line)); match != nil {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inCode = !inCode
+			kept = append(kept, line)
+			continue
+		}
+		if inCode {
+			kept = append(kept, line)
+			continue
+		}
+		if skipComment {
+			if strings.Contains(trimmed, "*/}") {
+				skipComment = false
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "{/*") {
+			if !strings.Contains(trimmed, "*/}") {
+				skipComment = true
+			}
+			continue
+		}
+		if skipExport {
+			exportDepth += braceDelta(line)
+			if exportDepth <= 0 {
+				skipExport = false
+			}
+			continue
+		}
+		if match := importRE.FindStringSubmatch(trimmed); match != nil {
 			symbol := strings.TrimSpace(match[1])
 			if defaultImportRE.MatchString(symbol) {
 				imports[symbol] = match[2]
 			}
 			continue
 		}
+		if strings.HasPrefix(trimmed, "export ") {
+			exportDepth = braceDelta(line)
+			if exportDepth > 0 {
+				skipExport = true
+			}
+			continue
+		}
 		kept = append(kept, line)
 	}
 	return Document{Frontmatter: frontmatter, Body: strings.Join(kept, "\n"), Imports: imports}
+}
+
+func braceDelta(line string) int {
+	var delta int
+	for _, r := range line {
+		switch r {
+		case '{':
+			delta++
+		case '}':
+			delta--
+		}
+	}
+	return delta
 }
 
 func parseFrontmatter(source string) (map[string]string, string) {
