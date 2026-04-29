@@ -35,6 +35,7 @@ var defaultImportRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var imageTextRE = regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`)
 var linkTextRE = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
 var htmlTagRE = regexp.MustCompile(`<[^>]+>`)
+var jsxStyleRE = regexp.MustCompile(`style=\{\{([^}]*)\}\}`)
 
 func Parse(source string) Document {
 	frontmatter, body := parseFrontmatter(source)
@@ -437,7 +438,49 @@ func isHTMLLine(line string) bool {
 
 func normalizeHTML(line string) string {
 	replacer := strings.NewReplacer("className=", "class=")
-	return replacer.Replace(line)
+	return jsxStyleRE.ReplaceAllStringFunc(replacer.Replace(line), func(match string) string {
+		parts := jsxStyleRE.FindStringSubmatch(match)
+		if len(parts) != 2 {
+			return match
+		}
+		style := normalizeStyleObject(parts[1])
+		if style == "" {
+			return ""
+		}
+		return `style="` + html.EscapeString(style) + `"`
+	})
+}
+
+func normalizeStyleObject(input string) string {
+	var declarations []string
+	for _, raw := range strings.Split(input, ",") {
+		key, value, ok := strings.Cut(raw, ":")
+		if !ok {
+			continue
+		}
+		key = cssName(strings.TrimSpace(key))
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		if key == "" || value == "" {
+			continue
+		}
+		declarations = append(declarations, key+": "+value)
+	}
+	return strings.Join(declarations, "; ")
+}
+
+func cssName(input string) string {
+	var b strings.Builder
+	for i, r := range input {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func fieldOpen(kind, line string) string {

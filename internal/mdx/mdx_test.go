@@ -115,6 +115,29 @@ func TestRenderBodyPassesGeneratedHTML(t *testing.T) {
 	}
 }
 
+func TestRenderBodyNormalizesJSXStyleHTML(t *testing.T) {
+	got := RenderBody(`<img src="/diagram.svg" className="align-center" style={{width: "80.0%"}} alt="Diagram" />`)
+	for _, want := range []string{
+		`class="align-center"`,
+		`style="width: 80.0%"`,
+		`alt="Diagram"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, "className") || strings.Contains(got, "{{") {
+		t.Fatalf("JSX syntax leaked into HTML: %s", got)
+	}
+}
+
+func TestRenderBodyNormalizesCamelCaseStyleKeys(t *testing.T) {
+	got := RenderBody(`<p style={{fontSize: "smaller", fontStyle: "italic"}}>* only available.</p>`)
+	if !strings.Contains(got, `style="font-size: smaller; font-style: italic"`) {
+		t.Fatalf("style was not normalized: %s", got)
+	}
+}
+
 func TestRenderBodyListsAndInlineMarkup(t *testing.T) {
 	got := RenderBody("See [docs](/docs) and `code`.\n\n- first\n- `second`\n\n1. one\n2. two")
 	if !strings.Contains(got, `<a href="/docs">docs</a>`) {
