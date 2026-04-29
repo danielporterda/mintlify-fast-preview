@@ -48,7 +48,7 @@ type fileState struct {
 	size    int64
 }
 
-func watchForReloads(root string, hub *reloadHub, interval time.Duration, stop <-chan struct{}) {
+func watchForReloads(root string, onChange func(), interval time.Duration, stop <-chan struct{}) {
 	previous := snapshot(root)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -58,7 +58,7 @@ func watchForReloads(root string, hub *reloadHub, interval time.Duration, stop <
 			next := snapshot(root)
 			if changed(previous, next) {
 				previous = next
-				hub.broadcast()
+				onChange()
 			}
 		case <-stop:
 			return

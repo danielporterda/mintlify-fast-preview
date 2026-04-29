@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/danielporterda/mintlify-fast-preview/internal/config"
@@ -80,7 +81,9 @@ func Serve(root, host string, port int, noOpen bool) error {
 	addr := fmt.Sprintf("%s:%d", host, port)
 	stop := make(chan struct{})
 	defer close(stop)
-	go watchForReloads(root, handler.reload, 250*time.Millisecond, stop)
+	go watchForReloads(root, func() {
+		_ = handler.handleFileChange()
+	}, 250*time.Millisecond, stop)
 	return http.ListenAndServe(addr, handler)
 }
 
@@ -93,6 +96,7 @@ func shell(root string, docs *config.Docs, title, body string, headings []mdx.He
 }
 
 type Handler struct {
+	mu          sync.RWMutex
 	root        string
 	docs        *config.Docs
 	routes      map[string]site.Route
@@ -101,20 +105,41 @@ type Handler struct {
 }
 
 func NewHandler(root string) (*Handler, error) {
-	docs, err := config.Load(root)
-	if err != nil {
+	handler := &Handler{root: root, reload: newReloadHub()}
+	if err := handler.rebuild(); err != nil {
 		return nil, err
 	}
-	routes, err := site.BuildRoutes(root, docs)
+	return handler, nil
+}
+
+func (h *Handler) rebuild() error {
+	docs, err := config.Load(h.root)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	routes, err := site.BuildRoutes(h.root, docs)
+	if err != nil {
+		return err
 	}
 	byRoute := map[string]site.Route{}
 	for _, route := range routes {
 		byRoute[route.URL] = route
 	}
-	index := buildSearchIndex(root, docs, routes)
-	return &Handler{root: root, docs: docs, routes: byRoute, searchIndex: index, reload: newReloadHub()}, nil
+	index := buildSearchIndex(h.root, docs, routes)
+	h.mu.Lock()
+	h.docs = docs
+	h.routes = byRoute
+	h.searchIndex = index
+	h.mu.Unlock()
+	return nil
+}
+
+func (h *Handler) handleFileChange() error {
+	if err := h.rebuild(); err != nil {
+		return err
+	}
+	h.reload.broadcast()
+	return nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -131,8 +156,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	routePath := config.CleanRoute(r.URL.Path)
-	if route, ok := h.routes[routePath]; ok {
-		page, err := RenderPage(h.root, h.docs, route)
+	h.mu.RLock()
+	route, ok := h.routes[routePath]
+	docs := h.docs
+	h.mu.RUnlock()
+	if ok {
+		page, err := RenderPage(h.root, docs, route)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -146,7 +175,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) serveSearch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("content-type", "application/json")
-	results := h.searchIndex.Search(r.URL.Query().Get("q"))
+	h.mu.RLock()
+	index := h.searchIndex
+	h.mu.RUnlock()
+	results := index.Search(r.URL.Query().Get("q"))
 	_ = json.NewEncoder(w).Encode(results)
 }
 

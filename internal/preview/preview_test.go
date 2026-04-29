@@ -199,6 +199,48 @@ func TestSearchIndexDeduplicatesRepeatedRoutes(t *testing.T) {
 	}
 }
 
+func TestHandlerRefreshesSearchIndexAfterFileChange(t *testing.T) {
+	root := writeDocsFixture(t)
+	handler, err := NewHandler(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results := handler.searchIndex.Search("needle"); len(results) != 0 {
+		t.Fatalf("unexpected initial search result: %+v", results)
+	}
+	if err := os.WriteFile(filepath.Join(root, "index.mdx"), []byte("---\ntitle: Home\n---\n# Home\nneedle"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	handler.handleFileChange()
+	if results := handler.searchIndex.Search("needle"); len(results) == 0 || results[0].Route != "/" {
+		t.Fatalf("missing refreshed search result: %+v", results)
+	}
+}
+
+func TestHandlerRefreshesRoutesAfterDocsJSONChange(t *testing.T) {
+	root := writeDocsFixture(t)
+	handler, err := NewHandler(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "new-page.mdx"), []byte("---\ntitle: New Page\n---\n# New Page"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs.json"), []byte(`{"name":"Docs","navigation":{"pages":["index","new-page"]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	handler.handleFileChange()
+	req := httptest.NewRequest(http.MethodGet, "/new-page", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `<h1 id="new-page">New Page</h1>`) {
+		t.Fatalf("missing new page render: %s", rec.Body.String())
+	}
+}
+
 func TestReloadHubBroadcastsToSubscribers(t *testing.T) {
 	hub := newReloadHub()
 	sub := hub.subscribe()
@@ -209,6 +251,18 @@ func TestReloadHubBroadcastsToSubscribers(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for reload broadcast")
 	}
+}
+
+func writeDocsFixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "docs.json"), []byte(`{"name":"Docs","navigation":{"pages":["index"]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "index.mdx"), []byte("---\ntitle: Home\n---\n# Home\ninitial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 func TestSnapshotDetectsWatchedFileChanges(t *testing.T) {
