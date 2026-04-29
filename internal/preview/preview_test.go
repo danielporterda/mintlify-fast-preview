@@ -199,6 +199,24 @@ func TestSearchIndexDeduplicatesRepeatedRoutes(t *testing.T) {
 	}
 }
 
+func TestSearchIndexIncludesResolvedSnippetContent(t *testing.T) {
+	handler, err := NewHandler(filepath.Join("..", "..", "testdata", "docs-main"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := handler.searchIndex.Search("readyz")
+	found := false
+	for _, result := range results {
+		if result.Route == "/global-synchronizer/troubleshooting-guide/common-questions" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected snippet-backed page in search results: %+v", results)
+	}
+}
+
 func TestHandlerRefreshesSearchIndexAfterFileChange(t *testing.T) {
 	root := writeDocsFixture(t)
 	handler, err := NewHandler(root)

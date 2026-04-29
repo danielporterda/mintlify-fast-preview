@@ -338,10 +338,14 @@ func buildSearchIndex(root string, docs *config.Docs, routes []site.Route) *sear
 		if title == "" {
 			title = label(route.Page.Path)
 		}
+		body := doc.Body
+		if resolved, err := mdx.ResolveImports(root, doc); err == nil {
+			body = resolved
+		}
 		documents = append(documents, search.Document{
 			Route: route.URL,
 			Title: title,
-			Body:  doc.Body,
+			Body:  body,
 		})
 	}
 	return search.NewIndex(documents)
