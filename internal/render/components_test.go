@@ -38,6 +38,16 @@ func TestCodeBlockWithTitle(t *testing.T) {
 	}
 }
 
+func TestMermaidEscapesDiagram(t *testing.T) {
+	got := Mermaid("flowchart LR\nA[Start] --> B[<Done>]")
+	if !strings.Contains(got, `<div class="mermaid">flowchart LR`) {
+		t.Fatalf("missing mermaid wrapper: %s", got)
+	}
+	if strings.Contains(got, "<Done>") {
+		t.Fatalf("diagram text was not escaped: %s", got)
+	}
+}
+
 func TestCardEscapesHrefAndTitle(t *testing.T) {
 	got := Card(`A&B`, `/x?y=1&z=2`)
 	if !strings.Contains(got, "A&amp;B") || !strings.Contains(got, "&amp;z=2") {

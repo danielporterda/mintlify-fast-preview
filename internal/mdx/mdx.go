@@ -168,6 +168,7 @@ func Render(markup string) Rendered {
 	var out bytes.Buffer
 	scanner := bufio.NewScanner(strings.NewReader(markup))
 	inCode := false
+	codeQuoted := false
 	var codeLang string
 	var codeTitle string
 	var code bytes.Buffer
@@ -231,19 +232,28 @@ func Render(markup string) Rendered {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "```") {
+		if fence, ok := fenceInfo(line); ok {
 			if !inCode {
 				flushBlocks()
 				inCode = true
-				codeLang, codeTitle = parseFenceInfo(strings.TrimSpace(strings.TrimPrefix(line, "```")))
+				codeQuoted = fence.quoted
+				codeLang, codeTitle = parseFenceInfo(fence.info)
 				code.Reset()
 				continue
 			}
-			out.WriteString(render.CodeBlockWithTitle(codeLang, codeTitle, code.String()))
+			if codeLang == "mermaid" {
+				out.WriteString(render.Mermaid(code.String()))
+			} else {
+				out.WriteString(render.CodeBlockWithTitle(codeLang, codeTitle, code.String()))
+			}
 			inCode = false
+			codeQuoted = false
 			continue
 		}
 		if inCode {
+			if codeQuoted {
+				line = stripQuotePrefix(line)
+			}
 			code.WriteString(line)
 			code.WriteByte('\n')
 			continue
@@ -320,6 +330,37 @@ func Render(markup string) Rendered {
 	return Rendered{HTML: out.String(), Headings: headings}
 }
 
+type fenceMarker struct {
+	info   string
+	quoted bool
+}
+
+func fenceInfo(line string) (fenceMarker, bool) {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "```") {
+		return fenceMarker{
+			info: strings.TrimSpace(strings.TrimPrefix(trimmed, "```")),
+		}, true
+	}
+	quoted := stripQuotePrefix(trimmed)
+	if strings.HasPrefix(strings.TrimSpace(quoted), "```") {
+		return fenceMarker{
+			info:   strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(quoted), "```")),
+			quoted: true,
+		}, true
+	}
+	return fenceMarker{}, false
+}
+
+func stripQuotePrefix(line string) string {
+	trimmedLeft := strings.TrimLeft(line, " \t")
+	if strings.HasPrefix(trimmedLeft, ">") {
+		trimmedLeft = strings.TrimPrefix(trimmedLeft, ">")
+		trimmedLeft = strings.TrimPrefix(trimmedLeft, " ")
+	}
+	return trimmedLeft
+}
+
 func renderLine(line string) (string, bool) {
 	trimmed := strings.TrimSpace(line)
 	switch {
@@ -360,6 +401,10 @@ func renderLine(line string) (string, bool) {
 	case strings.HasPrefix(trimmed, "<Tip"):
 		return admonitionTag("tip", trimmed), true
 	case strings.HasPrefix(trimmed, "</Tip"):
+		return "</aside>\n", true
+	case strings.HasPrefix(trimmed, "<Check"):
+		return admonitionTag("check", trimmed), true
+	case strings.HasPrefix(trimmed, "</Check"):
 		return "</aside>\n", true
 	case strings.HasPrefix(trimmed, "<Columns"):
 		return `<div class="mintfast-columns">` + "\n", true

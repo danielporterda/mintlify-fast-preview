@@ -220,6 +220,106 @@ func TestRenderBodyInlineFormattingAndImages(t *testing.T) {
 	}
 }
 
+func TestRenderBodyMermaidFence(t *testing.T) {
+	got := RenderBody("```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```")
+	for _, want := range []string{
+		`<div class="mermaid">`,
+		`flowchart LR`,
+		`A[Start] --&gt; B[Done]`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, `class="mintfast-code-block"`) {
+		t.Fatalf("mermaid should not render as a generic code block: %s", got)
+	}
+}
+
+func TestRenderBodyIndentedFencesInsideAccordion(t *testing.T) {
+	got := RenderBody("<Accordion title=\"The splice container keeps crashing - what should I do?\">\n" +
+		"**Diagnostic steps:**\n\n" +
+		"1. **Check logs:**\n" +
+		"   ```bash\n" +
+		"   docker logs splice-validator-participant-1\n" +
+		"   ```\n\n" +
+		"2. **Verify resources:**\n" +
+		"   - Docker memory >= 8GB\n" +
+		"   - Docker CPU >= 4 cores\n\n" +
+		"**Common solutions:**\n\n" +
+		"```bash\n" +
+		"colima stop\n" +
+		"colima start --memory 8 --cpu 4\n" +
+		"```\n" +
+		"</Accordion>\n\n" +
+		"<Accordion title=\"make build fails with env_file type errors - what's wrong?\">\n" +
+		"**Error:**\n" +
+		"```\n" +
+		"'env_file[1]' expected type 'string', got unconvertible type 'map[string]interface {}'\n" +
+		"```\n" +
+		"</Accordion>")
+	for _, want := range []string{
+		`<details class="mintfast-accordion" open><summary>The splice container keeps crashing - what should I do?</summary>`,
+		`data-language="bash"`,
+		`docker logs splice-validator-participant-1`,
+		`colima start --memory 8 --cpu 4`,
+		`<details class="mintfast-accordion" open><summary>make build fails with env_file type errors - what&#39;s wrong?</summary>`,
+		`env_file[1]`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+	for _, unwanted := range []string{`&lt;Accordion`, `&lt;/Accordion` } {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("accordion markup leaked into output: %s", got)
+		}
+	}
+}
+
+func TestRenderBodyQuotedFenceDoesNotLeakFollowingComponents(t *testing.T) {
+	got := RenderBody("> **TemplateName**\n" +
+		"> Represents the contract data or the template fields.\n" +
+		">\n" +
+		"> ```daml\n" +
+		"-- Code from: >\n" +
+		"> ./code-snippets/Com/Acme/Templates.daml\n" +
+		">\n" +
+		">\n" +
+		"-- [Include actual code example here]\n" +
+		"```\n\n" +
+		"The Java code generated for this variant is:\n\n" +
+		"```java\n" +
+		"package com.acme.enum;\n\n" +
+		"public enum Color implements DamlEnum<Color> {\n" +
+		"  RED,\n" +
+		"  GREEN,\n" +
+		"  BLUE;\n" +
+		"}\n" +
+		"```\n\n" +
+		"##### Parameterized types\n\n" +
+		"<Note>\n" +
+		"This section is only included for completeness.\n" +
+		"</Note>\n")
+	for _, want := range []string{
+		`data-language="daml"`,
+		`./code-snippets/Com/Acme/Templates.daml`,
+		`data-language="java"`,
+		`DamlEnum&lt;Color&gt;`,
+		`<h5 id="parameterized-types">Parameterized types</h5>`,
+		`<aside class="mintfast-admonition mintfast-admonition-note"><strong>note</strong>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+	for _, unwanted := range []string{`&lt;Note&gt;`, `&lt;/Note&gt;`} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("quoted fence leaked following component markup: %s", got)
+		}
+	}
+}
+
 func TestRenderBodyMintlifyComponentAliases(t *testing.T) {
 	got := RenderBody(`<CardGroup cols={2}>
 <Card title="A" href="/a">
@@ -288,6 +388,21 @@ Heads up.
 		`</aside>`,
 		`<aside class="mintfast-admonition mintfast-admonition-info"><strong>info</strong>`,
 		`<a class="mintfast-card" href="/standalone"><strong>Standalone</strong></a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+}
+
+func TestRenderBodyCheckComponent(t *testing.T) {
+	got := RenderBody(`<Check>
+**Transaction content** is visible only to authorized parties.
+</Check>`)
+	for _, want := range []string{
+		`<aside class="mintfast-admonition mintfast-admonition-check"><strong>check</strong>`,
+		`<strong>Transaction content</strong>`,
+		`authorized parties.`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %s", want, got)

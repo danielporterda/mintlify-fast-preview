@@ -40,6 +40,15 @@ func CodeBlockWithTitle(language, title, code string) string {
 	return b.String()
 }
 
+func Mermaid(diagram string) string {
+	var b strings.Builder
+	b.WriteString(`<div class="mermaid">`)
+	b.WriteString(html.EscapeString(strings.TrimSpace(diagram)))
+	b.WriteString(`</div>`)
+	b.WriteString("\n")
+	return b.String()
+}
+
 func Card(title, href string) string {
 	return `<a class="mintfast-card" href="` + html.EscapeString(href) + `">` + html.EscapeString(title) + `</a>`
 }

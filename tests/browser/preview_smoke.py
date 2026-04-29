@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import os
 import shutil
 import socket
@@ -50,6 +51,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="mintfast-browser-") as tmp:
         root = Path(tmp) / "docs-main"
         shutil.copytree(REPO / "testdata" / "docs-main", root)
+        docs_json = json.loads((root / "docs.json").read_text())
+        shared_pages = docs_json["navigation"]["dropdowns"][0]["groups"][1]["pages"]
+        shared_pages.append("shared/renderer-behavior")
+        (root / "docs.json").write_text(json.dumps(docs_json, indent=2) + "\n")
         port = free_port()
         base = f"http://127.0.0.1:{port}"
         server = subprocess.Popen(
@@ -91,18 +96,31 @@ def main() -> int:
                 assert response is not None and response.status == 200
                 assert page.locator(".nav-tree").is_visible()
 
+                page.goto(base + "/shared/renderer-behavior")
+                assert page.locator(".mermaid").is_visible()
+                assert page.locator(".mermaid").count() == 1
+                assert page.locator(".mintfast-admonition-check").is_visible()
+
                 page.locator(".mintfast-theme-toggle").click()
                 page.wait_for_function("document.documentElement.dataset.theme === 'dark'")
                 page.reload()
                 page.wait_for_function("document.documentElement.dataset.theme === 'dark'")
 
                 page.goto(base + "/reference/protobuf/operations/com-digitalasset-canton-admin-mediator-v30/mediatorstatusservice/mediatorstatus")
+                desktop_columns = page.locator(".x2mdx-ref-operation-shell").evaluate(
+                    "el => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length"
+                )
+                assert desktop_columns >= 2
                 page.locator(".mintfast-copy").first.click()
                 page.locator(".mintfast-copy").first.wait_for(state="visible")
                 page.wait_for_function("document.querySelector('.mintfast-copy').textContent === 'Copied'")
 
                 mobile = browser.new_page(viewport={"width": 390, "height": 844})
                 mobile.goto(base + "/reference/protobuf/operations/com-digitalasset-canton-admin-mediator-v30/mediatorstatusservice/mediatorstatus")
+                mobile_columns = mobile.locator(".x2mdx-ref-operation-shell").evaluate(
+                    "el => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length"
+                )
+                assert mobile_columns == 1
                 assert mobile.locator(".nav").evaluate("el => getComputedStyle(el).display") == "none"
                 assert mobile.locator(".toc").evaluate("el => getComputedStyle(el).display") == "none"
 
