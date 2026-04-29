@@ -28,11 +28,13 @@ mintfast render --root ./docs-main --out ./dist
 - Parses `docs.json` dropdowns, versions, groups, string pages, and nested page
   group objects.
 - Serves clean docs routes through a Mintlify-like shell with left navigation,
-  right table-of-contents placeholder, custom `styles.css`, and responsive CSS.
+  recursive left navigation, right table-of-contents links, custom `styles.css`,
+  dark-mode controls, copy buttons, and responsive CSS.
 - Renders common MDX/Markdown used in the current docs tree: frontmatter,
   snippet imports, headings, paragraphs, lists, inline links/code, fenced code
-  blocks, cards, columns, accordions, admonitions, generated reference HTML, and
-  explicit compatibility panels for unsupported custom React components.
+  blocks, cards, columns, accordions, admonitions, JSX-style raw HTML attributes,
+  generated reference HTML, and explicit compatibility panels for unsupported
+  custom React components.
 - Provides `/_mintfast/search?q=...` with a local offline index.
 - Provides `/_mintfast/events` and polling live reload for docs/config/style
   file changes.
@@ -83,6 +85,17 @@ nix --extra-experimental-features 'nix-command flakes' build .# --no-link
 mintfast validate --root /Users/danielporter/control/docs/docs-main
 mintfast render --root /Users/danielporter/control/docs/docs-main --out /tmp/mintfast-real-docs
 ```
+
+Browser smoke coverage starts a real `mintfast dev` server against a temporary
+fixture-docs copy and checks clean routes, nav rendering, dark-mode persistence,
+copy controls, mobile layout, and live reload:
+
+```bash
+nix-shell -p go python312Packages.playwright --run 'python tests/browser/preview_smoke.py'
+```
+
+Set `MINTFAST_CHROMIUM=/path/to/chromium` if Chromium is not discoverable on
+`PATH`.
 
 The current real docs tree validates and static-renders 1060 pages locally.
 

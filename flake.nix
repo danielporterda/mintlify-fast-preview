@@ -32,7 +32,12 @@
         let pkgs = nixpkgs.legacyPackages.${system};
         in {
           default = pkgs.mkShell {
-            packages = [ pkgs.go_1_23 pkgs.gotools pkgs.gopls ];
+            packages = [
+              pkgs.go_1_23
+              pkgs.gotools
+              pkgs.gopls
+              pkgs.python312Packages.playwright
+            ];
           };
         });
     };
